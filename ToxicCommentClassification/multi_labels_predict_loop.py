@@ -8,6 +8,7 @@ from keras import backend as K
 from keras.layers import Activation
 from keras.layers.normalization import BatchNormalization
 from keras.optimizers import Adam
+from keras.models import model_from_json
 import matplotlib.pyplot as plt
 from keras.layers.normalization import BatchNormalization
 import csv
@@ -28,7 +29,7 @@ df['id']=id
 df.to_csv("predict.csv", index=False)
 
 
-input_len = 1014
+input_len = 300
 
 def make_one_hot(char):
     index = ord(char) - ord("a")
@@ -79,135 +80,140 @@ def batch_iter(data_set, batch_size, shuffle=False):
                 yield make_input(x)
     return num_batches_per_epoch, data_generator()
 
+lr = 0.0001
 
+for num in range(6):
+    if num == 0:
+        model = model_from_json(open('model_toxic.json').read())
 
-def build_model(kernel_sizes, dense_units,
-                vocab_size, nb_filter, nb_class, keep_prob, maxlen):
-    inputs = Input(batch_shape=(None, maxlen, vocab_size))
+        model.compile(loss='binary_crossentropy',
+                      optimizer=Adam(lr=lr, beta_1=0.9, beta_2=0.999),
+                      metrics=['accuracy'])
 
-    conv1 = Conv1D(nb_filter, kernel_sizes[0], activation='relu')(inputs)
-    pool1 = MaxPool1D(pool_size=3)(conv1)
-    norm1 = BatchNormalization()(pool1)
-    conv2 = Conv1D(nb_filter, kernel_sizes[1], activation='relu')(norm1)
-    pool2 = MaxPool1D(pool_size=3)(conv2)
-    norm2 = BatchNormalization()(pool2)
+        batch_size = 15
+        steps, generator = batch_iter(data, batch_size)
 
-    conv3 = Conv1D(nb_filter, kernel_sizes[2], activation='relu')(norm2)
-    conv4 = Conv1D(nb_filter, kernel_sizes[3], activation='relu')(conv3)
-    conv5 = Conv1D(nb_filter, kernel_sizes[4], activation='relu')(conv4)
-    conv6 = Conv1D(nb_filter, kernel_sizes[5], activation='relu')(conv5)
-    pool3 = MaxPool1D(pool_size=3)(conv6)
-    pool3 = Flatten()(pool3)
+        hist = []
 
-    fc1 = Dense(dense_units[0], activation='relu')(pool3)
-    fc1 = Dropout(keep_prob)(fc1)
-    fc2 = Dense(dense_units[1], activation='relu')(fc1)
-    fc2 = Dropout(keep_prob)(fc2)
-    pred = Dense(nb_class, activation='softmax')(fc2)
+        model.load_weights('w_toxic.hdf5')
 
-    model = Model(inputs=[inputs], outputs=[pred])
+        hist_toxic = model.predict_generator(generator, steps, verbose=1)
+        for i in hist_toxic:
+            hist.extend(i)
 
-    return model
+        df2 = pd.read_csv("predict.csv", encoding="utf-8")
+        df2['toxic'] = hist
+        df2.to_csv("predict.csv", index=False)
 
+    if num == 1:
+        model = model_from_json(open('model_sev_toxic.json').read())
 
+        model.compile(loss='binary_crossentropy',
+                      optimizer=Adam(lr=lr, beta_1=0.9, beta_2=0.999),
+                      metrics=['accuracy'])
 
-n_in = input_len
-n_out = 1
-kernel_size = [7, 7, 3, 3, 3, 3]
-nb_filter = 256
-dense_units =[1024, 1024]
-keep_prob = 0.5
+        batch_size = 15
+        steps, generator = batch_iter(data, batch_size)
 
+        hist = []
 
-model = build_model(kernel_sizes=kernel_size,
-                    dense_units=dense_units,
-                    vocab_size=27,
-                    nb_filter=nb_filter,
-                    nb_class=1,
-                    keep_prob=keep_prob,
-                    maxlen=input_len)
+        model.load_weights('w_sev_toxic.hdf5')
 
-model.compile(loss='binary_crossentropy',
-              optimizer=Adam(lr=0.001, beta_1=0.9, beta_2=0.999),
-              metrics=['accuracy'])
+        hist_toxic = model.predict_generator(generator, steps, verbose=1)
+        for i in hist_toxic:
+            hist.extend(i)
 
+        df2 = pd.read_csv("predict.csv", encoding="utf-8")
+        df2['severe_toxic'] = hist
+        df2.to_csv("predict.csv", index=False)
 
-batch_size = 32
-steps, generator = batch_iter(data, batch_size)
+    if num == 2:
+        model = model_from_json(open('model_obscene.json').read())
 
-hist=[]
+        model.compile(loss='binary_crossentropy',
+                      optimizer=Adam(lr=lr, beta_1=0.9, beta_2=0.999),
+                      metrics=['accuracy'])
 
+        batch_size = 15
+        steps, generator = batch_iter(data, batch_size)
 
-model.load_weights('w_toxic.hdf5')
-model.compile(loss='binary_crossentropy',
-              optimizer=Adam(lr=0.001, beta_1=0.9, beta_2=0.999),
-              metrics=['accuracy'])
-hist_toxic = model.predict_generator(generator, steps,verbose=1)
-for i in hist_toxic:
-    hist.extend(i)
+        hist = []
 
-"""
-model.load_weights('w_sev_toxic.hdf5')
-model.compile(loss='binary_crossentropy',
-              optimizer=Adam(lr=0.001, beta_1=0.9, beta_2=0.999),
-              metrics=['accuracy'])
-hist_sev_toxic = model.predict_generator(generator, steps,verbose=1)
-for i in hist_sev_toxic:
-    hist.extend(i)
+        model.load_weights('w_obscene.hdf5')
 
-model.load_weights('w_obscene.hdf5')
-model.compile(loss='binary_crossentropy',
-              optimizer=Adam(lr=0.001, beta_1=0.9, beta_2=0.999),
-              metrics=['accuracy'])
-hist_obscene = model.predict_generator(generator, steps,verbose=1)
-for i in hist_obscene:
-    hist.extend(i)
+        hist_toxic = model.predict_generator(generator, steps, verbose=1)
+        for i in hist_toxic:
+            hist.extend(i)
 
-model.load_weights('w_threat.hdf5')
-model.compile(loss='binary_crossentropy',
-              optimizer=Adam(lr=0.001, beta_1=0.9, beta_2=0.999),
-              metrics=['accuracy'])
-hist_threat = model.predict_generator(generator, steps,verbose=1)
-for i in hist_threat:
-    hist.extend(i)
+        df2 = pd.read_csv("predict.csv", encoding="utf-8")
+        df2['obscene'] = hist
+        df2.to_csv("predict.csv", index=False)
 
-model.load_weights('w_insult.hdf5')
-model.compile(loss='binary_crossentropy',
-              optimizer=Adam(lr=0.001, beta_1=0.9, beta_2=0.999),
-              metrics=['accuracy'])
-hist_insult = model.predict_generator(generator, steps,verbose=1)
-for i in hist_insult:
-    hist.extend(i)
+    if num == 3:
+        model = model_from_json(open('model_threat.json').read())
 
-model.load_weights('w_id_hate.hdf5')
-model.compile(loss='binary_crossentropy',
-              optimizer=Adam(lr=0.001, beta_1=0.9, beta_2=0.999),
-              metrics=['accuracy'])
-hist_id_hate = model.predict_generator(generator, steps, verbose=1)
-for i in hist_insult:
-    hist.extend(i)
-"""
+        model.compile(loss='binary_crossentropy',
+                      optimizer=Adam(lr=0.001, beta_1=0.9, beta_2=0.999),
+                      metrics=['accuracy'])
 
-# /////////////////////save//////////////////////
+        batch_size = 15
+        steps, generator = batch_iter(data, batch_size)
 
-df2 = pd.read_csv("predict.csv", encoding="utf-8")
-df2['toxic']=hist
-df2.to_csv("predict.csv", index=False)
+        hist = []
 
+        model.load_weights('w_threat.hdf5')
 
-"""
-with open('predict.csv', 'a', newline='', encoding="utf-8")as file:
-    csvWriter = csv.writer(file)
-    for i, k1,k2,k3,k4,k5,k6 in zip(id, hist_toxic,hist_sev_toxic,hist_obscene,hist_threat,hist_insult,hist_id_hate):
-        sum = 1
-        # sum = k1+k2+k3+k4+k5+k6
-        ans = [i]
-        ans.extend(k1 / sum)
-        ans.extend(k2 / sum)
-        ans.extend(k3 / sum)
-        ans.extend(k4 / sum)
-        ans.extend(k5 / sum)
-        ans.extend(k6 / sum)
-        csvWriter.writerow(ans)
-    file.close()
-"""
+        hist_toxic = model.predict_generator(generator, steps, verbose=1)
+        for i in hist_toxic:
+            hist.extend(i)
+
+        df2 = pd.read_csv("predict.csv", encoding="utf-8")
+        df2['threat'] = hist
+        df2.to_csv("predict.csv", index=False)
+
+    if num == 4:
+        model = model_from_json(open('model_insult.json').read())
+
+        model.compile(loss='binary_crossentropy',
+                      optimizer=Adam(lr=0.001, beta_1=0.9, beta_2=0.999),
+                      metrics=['accuracy'])
+
+        batch_size = 15
+        steps, generator = batch_iter(data, batch_size)
+
+        hist = []
+
+        model.load_weights('w_insult.hdf5')
+
+        hist_toxic = model.predict_generator(generator, steps, verbose=1)
+        for i in hist_toxic:
+            hist.extend(i)
+
+        df2 = pd.read_csv("predict.csv", encoding="utf-8")
+        df2['insult'] = hist
+        df2.to_csv("predict.csv", index=False)
+
+    if num == 5:
+        model = model_from_json(open('model_id_hate.json').read())
+
+        model.compile(loss='binary_crossentropy',
+                      optimizer=Adam(lr=0.001, beta_1=0.9, beta_2=0.999),
+                      metrics=['accuracy'])
+
+        batch_size = 15
+        steps, generator = batch_iter(data, batch_size)
+
+        hist = []
+
+        model.load_weights('w_id_hate.hdf5')
+
+        hist_toxic = model.predict_generator(generator, steps, verbose=1)
+        for i in hist_toxic:
+            hist.extend(i)
+
+        df2 = pd.read_csv("predict.csv", encoding="utf-8")
+        df2['identity_hate'] = hist
+        df2.to_csv("predict.csv", index=False)
+
+    # /////////////////////save//////////////////////
+
