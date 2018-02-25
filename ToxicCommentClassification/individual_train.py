@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
-from keras.layers import Input, Conv1D, Dense, MaxPool1D, Flatten, Dropout, Embedding
+from keras.layers import Input, Conv1D, Dense, MaxPool1D, Flatten, Dropout, GlobalMaxPool1D
 from keras.models import Sequential
 from keras.models import Model
 from keras import backend as K
@@ -17,7 +17,7 @@ df = pd.read_csv("train.csv", encoding="utf-8")
 
 # sys.exit()
 
-input_len = 300
+input_len = 256
 input_len2 = 1000000
 
 
@@ -79,32 +79,38 @@ def build_model(kernel_sizes, dense_units,
     inputs = Input(batch_shape=(None, maxlen, vocab_size))
 
     conv1 = Conv1D(nb_filter, kernel_sizes[0], activation='relu')(inputs)
-    norm1 = BatchNormalization()(conv1)
-    pool1 = MaxPool1D(pool_size=3)(norm1)
-    conv2 = Conv1D(nb_filter, kernel_sizes[1], activation='relu')(pool1)
-    norm2 = BatchNormalization()(conv2)
-    # pool2 = MaxPool1D(pool_size=3)(norm2)
+    # norm1 = BatchNormalization()(conv1)
+    pool1 = MaxPool1D(pool_size=3)(conv1)
+    drop1 = Dropout(0.1)(pool1)
+    conv2 = Conv1D(nb_filter, kernel_sizes[1], activation='relu')(drop1)
+    # norm2 = BatchNormalization()(conv2)
+    pool2 = MaxPool1D(pool_size=3)(conv2)
+    drop2 = Dropout(0.1)(pool2)
 
-    # conv3 = Conv1D(nb_filter, kernel_sizes[2], activation='relu')(pool2)
-    # norm3 = BatchNormalization()(conv3)
-    # conv4 = Conv1D(nb_filter, kernel_sizes[3], activation='relu')(conv3)
+    conv3 = Conv1D(nb_filter, kernel_sizes[2], activation='relu')(drop2)
+    drop3 = Dropout(0.1)(conv3)
+    # pool3 = MaxPool1D(pool_size=3)(conv3)
+    norm3 = BatchNormalization()(drop3)
+    conv4 = Conv1D(nb_filter, kernel_sizes[3], activation='relu')(norm3)
+    drop4 = Dropout(0.1)(conv4)
+    # pool4 = MaxPool1D(pool_size=3)(conv4)
     # norm4 = BatchNormalization()(conv4)
-    # conv5 = Conv1D(nb_filter, kernel_sizes[4], activation='relu')(conv4)
+    conv5 = Conv1D(nb_filter, kernel_sizes[4], activation='relu')(drop4)
+    drop5 = Dropout(0.1)(conv5)
+    # pool5 = MaxPool1D(pool_size=3)(conv5)
     # norm5 = BatchNormalization()(conv5)
-    # conv6 = Conv1D(nb_filter, kernel_sizes[5], activation='relu')(conv5)
+    conv6 = Conv1D(nb_filter, kernel_sizes[5], activation='relu')(drop5)
     # norm6 = BatchNormalization()(conv6)
-    pool3 = MaxPool1D(pool_size=3)(conv2)
-    pool3 = Flatten()(pool3)
+    pool6 = MaxPool1D(pool_size=3)(conv6)
+    # drop3 = Dropout(0.25)(pool3)
+    pool = Flatten()(pool6)
+    # pool = GlobalMaxPool1D()(pool2)
 
-    fc1 = Dense(dense_units[0])(norm2)
-    # norm7 = BatchNormalization()(fc1)
-    fc_a = Activation('relu')(fc1)
-    fc_b = Dropout(keep_prob)(fc_a)
-    fc2 = Dense(dense_units[1])(fc_b)
-    # norm8 = BatchNormalization()(fc2)
-    fc_c = Activation('relu')(fc2)
-    fc_d = Dropout(keep_prob)(fc_c)
-    pred = Dense(nb_class, activation='sigmoid')(fc_d)
+    fc1 = Dense(dense_units[0], activation='relu')(pool)
+    fc1 = Dropout(keep_prob)(fc1)
+    fc2 = Dense(dense_units[1], activation='relu')(fc1)
+    fc2 = Dropout(keep_prob)(fc2)
+    pred = Dense(nb_class, activation='sigmoid')(fc2)
 
     model = Model(inputs=[inputs], outputs=[pred])
 
@@ -114,14 +120,15 @@ def build_model(kernel_sizes, dense_units,
 n_in = input_len
 n_out = 1
 kernel_size = [7, 7, 3, 3, 3, 3]
-nb_filter = 256
-dense_units =[1024, 1024]
+nb_filter = 32
+dense_units =[32,32]
 keep_prob = 0.5
 
-
-lr = 0.001
+CLASSES_LIST = ["toxic", "severe_toxic", "obscene", "threat", "insult", "identity_hate"]
 
 for i in range(6):
+    # if i==0:continue
+
 
     model = build_model(kernel_sizes=kernel_size,
                         dense_units=dense_units,
@@ -132,211 +139,45 @@ for i in range(6):
                         maxlen=input_len)
 
     model.compile(loss='binary_crossentropy',
-                  optimizer=Adam(lr=lr, beta_1=0.9, beta_2=0.999),
+                  optimizer=Adam(lr=0.001, beta_1=0.9, beta_2=0.999),
                   metrics=['accuracy'])
-    model.summary()
 
-    batch_size = 50
+    if i==0: model.summary()
+
+    batch_size = 32
     epochs = 10
 
-    if i==0 :
-        ######################################toxic############################################
+    np.random.permutation(df.index)
 
-        df2 = df[(df["comment_text"].str.len() <=  input_len2) & (df["toxic"] > 0)]
+    df2 = df[(df["comment_text"].str.len() <= input_len2) & (df[CLASSES_LIST[i]] > 0)]
 
-        data = df2.loc[:, "comment_text"].as_matrix().astype('str')
-        labels_toxic = df2.loc[:, "toxic"].as_matrix().astype('float16')
+    data = df2.loc[:, "comment_text"].as_matrix().astype('str')
+    labels_toxic = df2.loc[:, CLASSES_LIST[i]].as_matrix().astype('float16')
 
-        df0 = df[(df["comment_text"].str.len() <=  input_len2) & (df["toxic"] == 0)]
+    df0 = df[(df["comment_text"].str.len() <= input_len2) & (df[CLASSES_LIST[i]] == 0)].reset_index(drop=True)
 
-        nois_len = len(data)
+    nois_len = len(data)
 
-        data0 = df0.loc[:nois_len, "comment_text"].as_matrix().astype('str')
-        labels0_toxic = df0.loc[:nois_len, "toxic"].as_matrix().astype('float16')
+    data0 = df0.loc[:nois_len, "comment_text"].as_matrix().astype('str')
+    labels0_toxic = df0.loc[:nois_len, CLASSES_LIST[i]].as_matrix().astype('float16')
 
-        data = np.append(data, data0)
-        labels_toxic = np.append(labels_toxic, labels0_toxic)
+    data = np.append(data, data0)
+    labels_toxic = np.append(labels_toxic, labels0_toxic)
 
-        print("toxic")
-        data_train, data_test, labels_train, labels_test = train_test_split(data, labels_toxic, train_size=0.8)
+    print(CLASSES_LIST[i])
+    data_train, data_test, labels_train, labels_test = train_test_split(data, labels_toxic, train_size=0.8)
 
-        train_steps, train_batches = batch_iter(data_train, labels_train, batch_size)
-        valid_steps, valid_batches = batch_iter(data_test, labels_test, batch_size)
+    train_steps, train_batches = batch_iter(data_train, labels_train, batch_size)
+    valid_steps, valid_batches = batch_iter(data_test, labels_test, batch_size)
 
-        model.fit_generator(train_batches, train_steps,
-                            epochs=epochs,
-                            validation_data=valid_batches,
-                            validation_steps=valid_steps)
+    model.fit_generator(train_batches, train_steps,
+                        epochs=epochs,
+                        validation_data=valid_batches,
+                        validation_steps=valid_steps,
+                        verbose=1)
 
-        # /////////////////////save//////////////////////
+    # /////////////////////save//////////////////////
 
-        model.save_weights('w_toxic.hdf5')
-        json_string = model.to_json()
-        open('model_toxic.json', 'w').write(json_string)
-    elif i==1:
-        ######################################sev_toxic############################################
-
-        df2 = df[(df["comment_text"].str.len() <= input_len2) & (df["severe_toxic"] > 0)]
-
-        data = df2.loc[:, "comment_text"].as_matrix().astype('str')
-        labels_sev_toxic = df2.loc[:, "severe_toxic"].as_matrix().astype('float16')
-
-        df0 = df[(df["comment_text"].str.len() <= input_len2) & (df["severe_toxic"] == 0)]
-
-        nois_len = len(data)
-
-        data0 = df0.loc[:nois_len, "comment_text"].as_matrix().astype('str')
-        labels0_sev_toxic = df0.loc[:nois_len, "severe_toxic"].as_matrix().astype('float16')
-
-        data = np.append(data, data0)
-        labels_sev_toxic = np.append(labels_sev_toxic, labels0_sev_toxic)
-
-        print("sev_toxic")
-        data_train, data_test, labels_train, labels_test = train_test_split(data, labels_sev_toxic, train_size=0.8)
-
-        train_steps, train_batches = batch_iter(data_train, labels_train, batch_size)
-        valid_steps, valid_batches = batch_iter(data_test, labels_test, batch_size)
-
-        model.fit_generator(train_batches, train_steps,
-                            epochs=epochs,
-                            validation_data=valid_batches,
-                            validation_steps=valid_steps)
-
-        # /////////////////////save//////////////////////
-        model.save_weights('w_sev_toxic.hdf5')
-        json_string = model.to_json()
-        open('model_sev_toxic.json', 'w').write(json_string)
-    elif i == 2:
-        ######################################obscene############################################
-
-        df2 = df[(df["comment_text"].str.len() <=  input_len2) & (df["obscene"] > 0)]
-
-        data = df2.loc[:, "comment_text"].as_matrix().astype('str')
-        labels_obscene = df2.loc[:, "obscene"].as_matrix().astype('float16')
-
-        df0 = df[(df["comment_text"].str.len() <=  input_len2) & (df["obscene"] == 0)]
-
-        nois_len = len(data)
-
-        data0 = df0.loc[:nois_len, "comment_text"].as_matrix().astype('str')
-        labels0_obscene = df0.loc[:nois_len, "obscene"].as_matrix().astype('float16')
-
-        data = np.append(data, data0)
-        labels_obscene = np.append(labels_obscene, labels0_obscene)
-
-        print("obscene")
-        data_train, data_test, labels_train, labels_test = train_test_split(data, labels_obscene, train_size=0.8)
-
-        train_steps, train_batches = batch_iter(data_train, labels_train, batch_size)
-        valid_steps, valid_batches = batch_iter(data_test, labels_test, batch_size)
-
-        model.fit_generator(train_batches, train_steps,
-                            epochs=epochs,
-                            validation_data=valid_batches,
-                            validation_steps=valid_steps)
-
-        # /////////////////////save//////////////////////
-        json_string = model.to_json()
-        open('model_obscene.json', 'w').write(json_string)
-        model.save_weights('w_obscene.hdf5')
-    elif i == 3:
-        ######################################threat############################################
-
-        df2 = df[(df["comment_text"].str.len() <= input_len2) & (df["threat"] > 0)]
-
-        data = df2.loc[:, "comment_text"].as_matrix().astype('str')
-        labels_threat = df2.loc[:, "threat"].as_matrix().astype('float16')
-
-        df0 = df[(df["comment_text"].str.len() <= input_len2) & (df["threat"] == 0)]
-
-        nois_len = len(data)
-
-        data0 = df0.loc[:nois_len, "comment_text"].as_matrix().astype('str')
-        labels0_threat = df0.loc[:nois_len, "threat"].as_matrix().astype('float16')
-
-
-        data = np.append(data, data0)
-        labels_threat = np.append(labels_threat, labels0_threat)
-
-        print("threat")
-        data_train, data_test, labels_train, labels_test = train_test_split(data, labels_threat, train_size=0.8)
-
-        train_steps, train_batches = batch_iter(data_train, labels_train, batch_size)
-        valid_steps, valid_batches = batch_iter(data_test, labels_test, batch_size)
-
-        model.fit_generator(train_batches, train_steps,
-                            epochs=epochs,
-                            validation_data=valid_batches,
-                            validation_steps=valid_steps)
-
-        # /////////////////////save//////////////////////
-        json_string = model.to_json()
-        open('model_threat.json', 'w').write(json_string)
-        model.save_weights('w_threat.hdf5')
-    elif i == 4:
-        ######################################insult############################################
-
-        df2 = df[(df["comment_text"].str.len() <= input_len2) & (df["insult"] > 0)]
-
-        data = df2.loc[:, "comment_text"].as_matrix().astype('str')
-        labels_insult = df2.loc[:, "insult"].as_matrix().astype('float16')
-
-        df0 = df[(df["comment_text"].str.len() <= input_len2) & (df["insult"] == 0)]
-
-        nois_len = len(data)
-
-        data0 = df0.loc[:nois_len, "comment_text"].as_matrix().astype('str')
-        labels0_insult = df0.loc[:nois_len, "insult"].as_matrix().astype('float16')
-
-        data = np.append(data, data0)
-        labels_insult = np.append(labels_insult, labels0_insult)
-        print("insult")
-        data_train, data_test, labels_train, labels_test = train_test_split(data, labels_insult, train_size=0.8)
-
-        train_steps, train_batches = batch_iter(data_train, labels_train, batch_size)
-        valid_steps, valid_batches = batch_iter(data_test, labels_test, batch_size)
-
-        model.fit_generator(train_batches, train_steps,
-                            epochs=epochs,
-                            validation_data=valid_batches,
-                            validation_steps=valid_steps)
-
-        # /////////////////////save//////////////////////
-
-        json_string = model.to_json()
-        open('model_insult.json', 'w').write(json_string)
-        model.save_weights('w_insult.hdf5')
-    elif i == 5:
-        ######################################id_hate############################################
-
-        df2 = df[(df["comment_text"].str.len() <= input_len2) & (df["identity_hate"] > 0)]
-
-        data = df2.loc[:, "comment_text"].as_matrix().astype('str')
-        labels_id_hate = df2.loc[:, "identity_hate"].as_matrix().astype('float16')
-
-        df0 = df[(df["comment_text"].str.len() <= input_len2) & (df["identity_hate"] == 0)]
-
-        nois_len = len(data)
-
-        data0 = df0.loc[:nois_len, "comment_text"].as_matrix().astype('str')
-        labels0_id_hate = df0.loc[:nois_len, "identity_hate"].as_matrix().astype('float16')
-
-        data = np.append(data, data0)
-        labels_id_hate = np.append(labels_id_hate, labels0_id_hate)
-        print("id_hate")
-        data_train, data_test, labels_train, labels_test = train_test_split(data, labels_id_hate, train_size=0.9)
-
-        train_steps, train_batches = batch_iter(data_train, labels_train, batch_size)
-        valid_steps, valid_batches = batch_iter(data_test, labels_test, batch_size)
-
-        model.fit_generator(train_batches, train_steps,
-                            epochs=epochs,
-                            validation_data=valid_batches,
-                            validation_steps=valid_steps)
-
-        # /////////////////////save//////////////////////
-
-        json_string = model.to_json()
-        open('model_id_hate.json', 'w').write(json_string)
-        model.save_weights('w_id_hate.hdf5')
-
+    model.save_weights('w_' + CLASSES_LIST[i] + '.hdf5')
+    json_string = model.to_json()
+    open('model_' + CLASSES_LIST[i] + '.json', 'w').write(json_string)
