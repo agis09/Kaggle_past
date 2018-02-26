@@ -17,7 +17,7 @@ df = pd.read_csv("train.csv", encoding="utf-8")
 
 # sys.exit()
 
-input_len = 256
+input_len = 300
 input_len2 = 1000000
 
 
@@ -77,33 +77,33 @@ def batch_iter(data_set, label, batch_size, shuffle=True):
 def build_model(kernel_sizes, dense_units,
                 vocab_size, nb_filter, nb_class, keep_prob, maxlen):
     inputs = Input(batch_shape=(None, maxlen, vocab_size))
-
-    conv1 = Conv1D(nb_filter, kernel_sizes[0], activation='relu')(inputs)
+    drop = Dropout(0.2)(inputs)
+    conv1 = Conv1D(nb_filter, kernel_sizes[0], activation='relu')(drop)
     # norm1 = BatchNormalization()(conv1)
     pool1 = MaxPool1D(pool_size=3)(conv1)
-    drop1 = Dropout(0.1)(pool1)
+    drop1 = Dropout(0)(pool1)
     conv2 = Conv1D(nb_filter, kernel_sizes[1], activation='relu')(drop1)
     # norm2 = BatchNormalization()(conv2)
     pool2 = MaxPool1D(pool_size=3)(conv2)
-    drop2 = Dropout(0.1)(pool2)
+    drop2 = Dropout(0)(pool2)
 
-    conv3 = Conv1D(nb_filter, kernel_sizes[2], activation='relu')(drop2)
-    drop3 = Dropout(0.1)(conv3)
+    # conv3 = Conv1D(nb_filter, kernel_sizes[2], activation='relu')(drop2)
+    # drop3 = Dropout(0.1)(conv3)
     # pool3 = MaxPool1D(pool_size=3)(conv3)
-    norm3 = BatchNormalization()(drop3)
-    conv4 = Conv1D(nb_filter, kernel_sizes[3], activation='relu')(norm3)
-    drop4 = Dropout(0.1)(conv4)
+    # norm3 = BatchNormalization()(drop3)
+    # conv4 = Conv1D(nb_filter, kernel_sizes[3], activation='relu')(norm3)
+    # drop4 = Dropout(0.1)(conv4)
     # pool4 = MaxPool1D(pool_size=3)(conv4)
     # norm4 = BatchNormalization()(conv4)
-    conv5 = Conv1D(nb_filter, kernel_sizes[4], activation='relu')(drop4)
-    drop5 = Dropout(0.1)(conv5)
+    # conv5 = Conv1D(nb_filter, kernel_sizes[4], activation='relu')(drop4)
+    # drop5 = Dropout(0.1)(conv5)
     # pool5 = MaxPool1D(pool_size=3)(conv5)
     # norm5 = BatchNormalization()(conv5)
-    conv6 = Conv1D(nb_filter, kernel_sizes[5], activation='relu')(drop5)
+    # conv6 = Conv1D(nb_filter, kernel_sizes[5], activation='relu')(drop5)
     # norm6 = BatchNormalization()(conv6)
-    pool6 = MaxPool1D(pool_size=3)(conv6)
+    # pool6 = MaxPool1D(pool_size=3)(drop2)
     # drop3 = Dropout(0.25)(pool3)
-    pool = Flatten()(pool6)
+    pool = Flatten()(drop2)
     # pool = GlobalMaxPool1D()(pool2)
 
     fc1 = Dense(dense_units[0], activation='relu')(pool)
@@ -120,15 +120,13 @@ def build_model(kernel_sizes, dense_units,
 n_in = input_len
 n_out = 1
 kernel_size = [7, 7, 3, 3, 3, 3]
-nb_filter = 32
-dense_units =[32,32]
+nb_filter =256
+dense_units =[1024, 1024]
 keep_prob = 0.5
 
 CLASSES_LIST = ["toxic", "severe_toxic", "obscene", "threat", "insult", "identity_hate"]
 
 for i in range(6):
-    # if i==0:continue
-
 
     model = build_model(kernel_sizes=kernel_size,
                         dense_units=dense_units,
@@ -145,7 +143,7 @@ for i in range(6):
     if i==0: model.summary()
 
     batch_size = 32
-    epochs = 10
+    epochs = 7
 
     np.random.permutation(df.index)
 
@@ -165,6 +163,7 @@ for i in range(6):
     labels_toxic = np.append(labels_toxic, labels0_toxic)
 
     print(CLASSES_LIST[i])
+
     data_train, data_test, labels_train, labels_test = train_test_split(data, labels_toxic, train_size=0.8)
 
     train_steps, train_batches = batch_iter(data_train, labels_train, batch_size)
