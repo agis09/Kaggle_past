@@ -7,17 +7,18 @@ from keras.preprocessing import text, sequence
 from sklearn.model_selection import train_test_split
 from keras.optimizers import Adam
 from keras import backend as K
+from keras.layers.normalization import BatchNormalization
 
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 
 max_features = 20000
-maxlen = 300
+maxlen = 100
 
 df = pd.read_csv("train.csv", encoding="utf-8")
 df2 = df[(df["toxic"] > 0) | (df["severe_toxic"] > 0) | (df["obscene"] > 0) | \
         (df["threat"] > 0) | (df["insult"] > 0) | (df["identity_hate"] > 0)]
 
-data = df2.loc[:, "comment_text"].fillna("unknown")
+data = df2.loc[:, "comment_text"].fillna("fillna")
 data = data.as_matrix().astype('str')
 labels = df2.loc[:, "toxic":"identity_hate"]
 labels = labels.as_matrix().astype('float16')
@@ -26,7 +27,7 @@ np.random.permutation(df.index)
 df0 = df[(df["toxic"] == 0) & (df["severe_toxic"] == 0) & (df["obscene"] == 0) & \
         (df["threat"] == 0) & (df["insult"] == 0) & (df["identity_hate"] == 0)].reset_index(drop=True)
 
-data0 = df0.loc[:len(data)//2,"comment_text"].fillna("unknown")
+data0 = df0.loc[:len(data)//2,"comment_text"].fillna("fillna")
 data0 = data0.as_matrix().astype('str')
 labels0 = df0.loc[:len(data)//2, "toxic":"identity_hate"]
 labels0 = labels0.as_matrix().astype('float16')
@@ -69,12 +70,7 @@ def cnn_rnn():
     main = Conv1D(filters=32, kernel_size=2, padding='same', activation='relu')(main)
     main = MaxPooling1D(pool_size=2)(main)
 
-    main = Dropout(0.25)(main)
-    main = Conv1D(filters=32, kernel_size=2, padding='same', activation='relu')(main)
-    main = MaxPooling1D(pool_size=2)(main)
-
-    # main = GRU(32,init=weight_variable,return_sequences=True)(main)
-    main = GRU(32, init=weight_variable,return_sequences=False)(main)
+    main = GRU(32)(main)
     main = Dense(16, activation="relu")(main)
     main = Dense(6, activation="sigmoid")(main)
     model = Model(inputs=inp, outputs=main)
@@ -93,7 +89,7 @@ model.compile(loss='binary_crossentropy',
 X_t_train, X_t_test, y_train, y_test = train_test_split(X_t, y, test_size = 0.10)
 
 batch_size = 128
-epochs = 5
+epochs = 2
 
 model.fit(X_t_train, y_train,
           validation_data=(X_t_test, y_test),
@@ -117,7 +113,7 @@ X_te = sequence.pad_sequences(list_tokenized_test, maxlen=maxlen)
 
 model.load_weights("test.h5")
 
-y_test = model.predict(X_te)
+y_test = model.predict(X_te,verbose=1)
 sample_submission = pd.read_csv("sample_submission.csv")
 sample_submission[list_classes] = y_test
 sample_submission.to_csv("predictions.csv", index=False)
