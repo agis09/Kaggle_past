@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 from keras.layers.normalization import BatchNormalization
 import sys
 
-df = pd.read_csv("train.csv", encoding="utf-8")
+df = pd.read_csv("train_preprocessed.csv", encoding="utf-8")
 
 
 # sys.exit()
@@ -143,7 +143,7 @@ for i in range(6):
     if i==0: model.summary()
 
     batch_size = 32
-    epochs = 7
+    epochs = 4
 
     np.random.permutation(df.index)
 
@@ -156,8 +156,8 @@ for i in range(6):
 
     nois_len = len(data)
 
-    data0 = df0.loc[:nois_len, "comment_text"].as_matrix().astype('str')
-    labels0_toxic = df0.loc[:nois_len, CLASSES_LIST[i]].as_matrix().astype('float16')
+    data0 = df0.loc[:nois_len*3, "comment_text"].as_matrix().astype('str')
+    labels0_toxic = df0.loc[:nois_len*3, CLASSES_LIST[i]].as_matrix().astype('float16')
 
     data = np.append(data, data0)
     labels_toxic = np.append(labels_toxic, labels0_toxic)
