@@ -39,12 +39,12 @@ np.random.seed = seed
 
 train_ids = next(os.walk(TRAIN_PATH))[1]
 test_ids = next(os.walk(TEST_PATH))[1]
-
+"""
 X_train = np.zeros((len(train_ids)*8, IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)
 Y_train = np.zeros((len(train_ids)*8, IMG_HEIGHT, IMG_WIDTH, 1), dtype=np.bool)
 print('Getting and resizing train images and masks ... ')
 sys.stdout.flush()
-"""
+
 for n, id_ in tqdm(enumerate(train_ids), total=len(train_ids)):
     path = TRAIN_PATH + id_
     img = imread(path + '/images/' + id_ + '.png')[:,:,:IMG_CHANNELS]
@@ -85,8 +85,8 @@ for n, id_ in tqdm(enumerate(train_ids), total=len(train_ids)):
 
 np.save("X_train",X_train)
 np.save("Y_train",Y_train)
-"""
 
+"""
 X_test = np.zeros((len(test_ids)*8, IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)
 sizes_test = []
 print('Getting and resizing test images ... ')
@@ -112,16 +112,17 @@ print('Done!')
 
 X_train=np.load("X_train.npy")
 Y_train=np.load("Y_train.npy")
-"""
-for i in range(3):
-    for j, x in enumerate(X_train):
-        X_train[j][:,:,i] = cv2.equalizeHist(x[:,:,i])
 
 
-for i in range(3):
-    for j, x in enumerate(X_test):
-        X_test[j][:,:,i] = cv2.equalizeHist(x[:,:,i])
-"""
+for j, x in enumerate(X_train):
+    hsv = color.rgb2hsv(x)
+    x = color.hsv2rgb(cv2.equalizeHist(hsv[:,:,2]))
+
+
+for j, x in enumerate(X_test):
+    hsv = color.rgb2hsv(x)
+    x = color.hsv2rgb(cv2.equalizeHist(hsv[:,:,2]))
+
 
 (X_train,X_val,Y_train,Y_val)=train_test_split(X_train,Y_train,test_size=0.1)
 
@@ -195,22 +196,7 @@ def iou_metric_batch(y_true_in, y_pred_in):
 def my_iou_metric(label, pred):
     metric_value = tf.py_func(iou_metric_batch, [label, pred], tf.float32)
     return metric_value
-"""
 
-# Metric function
-smooth = 1
-
-def dice_coef(y_true, y_pred):
-    y_true_f = K.flatten(y_true)
-    y_pred_f = K.flatten(y_pred)
-    intersection = K.sum(y_true_f * y_pred_f)
-    return (2. * intersection + smooth) / (K.sum(y_true_f) + K.sum(y_pred_f) + smooth)
-
-# Loss funtion
-def dice_coef_loss(y_true, y_pred):
-    return -dice_coef(y_true, y_pred)
-
-"""
 # Build U-Net model
 inputs = Input((IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS))
 s = Lambda(lambda x: x / 255) (inputs)
@@ -271,12 +257,11 @@ results = model.fit(X_train, Y_train, validation_split=0.2, batch_size=8, epochs
 model = load_model('model-dsbowl2018-1.h5',custom_objects={'my_iou_metric': my_iou_metric})
 preds_test = model.predict(X_test, verbose=1)
 
-preds = np.zeros((len(test_ids), IMG_HEIGHT, IMG_WIDTH, 1), dtype=np.uint8)
 
 for n, id_ in tqdm(enumerate(test_ids), total=len(test_ids)):
-    preds_test[n] += np.rot90(preds_test[n+len(test_ids)],3) \
-                     +np.rot90(preds_test[n+len(test_ids)*2],2) \
-                     +np.rot90(preds_test[n+len(test_ids)*3],1)
+
+    preds_test[n] += np.rot90(preds_test[n+len(test_ids)],3)+np.rot90(preds_test[n+len(test_ids)*2],2) +np.rot90(preds_test[n+len(test_ids)*3],1)
+
     img1 = cv2.flip(preds_test[n+len(test_ids)*4],1)
     img1=np.reshape(img1,(IMG_HEIGHT,IMG_WIDTH,1))
     img2 = np.rot90(preds_test[n+len(test_ids)*5],3)
@@ -289,14 +274,14 @@ for n, id_ in tqdm(enumerate(test_ids), total=len(test_ids)):
     img4 = np.rot90(img4,1)
     img4=np.reshape(img4,(IMG_HEIGHT,IMG_WIDTH,1))
     preds_test[n]+=img1+img2+img3+img4
-    preds_test[n]/=8
-    preds[n]=preds_test[n]
 
 
-preds_test_t = (preds > 0.5).astype(np.uint8)
+preds_test = preds_test[:len(test_ids),:,:,:]
+
+preds_test_t = (preds_test > 0.5).astype(np.uint8)
 preds_test_upsampled = []
-for i in range(len(preds)):
-    preds_test_upsampled.append(resize(np.squeeze(preds[i]),
+for i in range(len(preds_test)):
+    preds_test_upsampled.append(resize(np.squeeze(preds_test[i]),
                                        (sizes_test[i][0], sizes_test[i][1]),
                                        mode='constant', preserve_range=True))
 
