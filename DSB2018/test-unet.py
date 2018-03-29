@@ -47,8 +47,8 @@ np.random.seed = seed
 train_ids = next(os.walk(TRAIN_PATH))[1]
 test_ids = next(os.walk(TEST_PATH))[1]
 
-X_train = np.zeros((len(train_ids)*5, IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.double)
-Y_train = np.zeros((len(train_ids)*5, IMG_HEIGHT, IMG_WIDTH, 1), dtype=np.double)
+X_train = np.zeros((len(train_ids)*5, IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.float32)
+Y_train = np.zeros((len(train_ids)*5, IMG_HEIGHT, IMG_WIDTH, 1), dtype=np.float32)
 
 # 値を-1から1に正規化する関数
 def normalize_x(image):
@@ -75,6 +75,10 @@ for n, id_ in tqdm(enumerate(train_ids), total=len(train_ids)):
     img = imread(path + '/images/' + id_ + '.png')[:,:,:IMG_CHANNELS]
     img = resize(img, (IMG_HEIGHT, IMG_WIDTH), mode='constant', preserve_range=True)
 
+
+    if n < 10:
+        cv2.imwrite("train"+str(n)+"_x.bmp",img)
+
     img = normalize_x(img)
 
     X_train[n] = img
@@ -90,6 +94,10 @@ for n, id_ in tqdm(enumerate(train_ids), total=len(train_ids)):
                                       preserve_range=True), axis=-1)
         mask = np.maximum(mask, mask_)
 
+
+    if n < 10:
+        cv2.imwrite("train"+str(n)+"_y.bmp",mask)
+
     mask=normalize_y(mask)
 
     Y_train[n] = mask
@@ -103,7 +111,7 @@ for n, id_ in tqdm(enumerate(train_ids), total=len(train_ids)):
 np.save("X_train",X_train)
 np.save("Y_train",Y_train)
 
-X_test = np.zeros((len(test_ids), IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.double)
+X_test = np.zeros((len(test_ids), IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.float32)
 sizes_test = []
 print('Getting and resizing test images ... ')
 sys.stdout.flush()
@@ -111,7 +119,10 @@ for n, id_ in tqdm(enumerate(test_ids), total=len(test_ids)):
     path = TEST_PATH + id_
     img = imread(path + '/images/' + id_ + '.png')[:,:,:IMG_CHANNELS]
     sizes_test.append([img.shape[0], img.shape[1]])
+
+
     img = resize(img, (IMG_HEIGHT, IMG_WIDTH), mode='constant', preserve_range=True)
+
     img = normalize_x(img)
 
     X_test[n] = img
@@ -324,23 +335,21 @@ model.compile(loss=dice_coef_loss, optimizer=Adam(), metrics=[dice_coef])
 BATCH_SIZE = 12
 NUM_EPOCH = 20
 # history = model.fit(X_train, Y_train, batch_size=BATCH_SIZE, epochs=NUM_EPOCH, verbose=1)
-# #model.save_weights('unet_weights.hdf5')
+# model.save_weights('unet_weights.hdf5')
 
 
 #############  predict  ###############
 
 model.load_weights('unet_weights.hdf5')
-preds_test = model.predict(X_test,verbose=1)
-
+preds_test = model.predict(X_train,verbose=1)
 preds_test_upsampled = []
 
 for i in range(10):
-    tmp = X_test[i]
-    tmp = np.reshape(tmp,(256,256))
-    imsave("mask"+str(i)+"_test.bmp",tmp)
-    tmp=denormalize_y(preds_test[i])
-    tmp = np.reshape(tmp,(256,256))
-    imsave("mask"+str(i)+"_pred.bmp",tmp)
+    tmp = preds_test[i]
+    tmp=denormalize_y(tmp)
+    cv2.imwrite("test"+str(i)+"_y_pred.bmp",tmp)
+
+# sys.exit()
 
 for i in range(len(preds_test)):
     preds_test_upsampled.append(denormalize_y(resize(np.squeeze(preds_test[i]),
