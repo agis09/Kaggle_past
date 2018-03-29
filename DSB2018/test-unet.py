@@ -70,14 +70,14 @@ def denormalize_y(image):
 
 print('Getting and resizing train images and masks ... ')
 sys.stdout.flush()
+
 for n, id_ in tqdm(enumerate(train_ids), total=len(train_ids)):
     path = TRAIN_PATH + id_
     img = imread(path + '/images/' + id_ + '.png')[:,:,:IMG_CHANNELS]
     img = resize(img, (IMG_HEIGHT, IMG_WIDTH), mode='constant', preserve_range=True)
 
 
-    if n < 10:
-        cv2.imwrite("train"+str(n)+"_x.bmp",img)
+    cv2.imwrite("train_image/train"+str(n)+"_x.bmp",img)
 
     img = normalize_x(img)
 
@@ -95,8 +95,7 @@ for n, id_ in tqdm(enumerate(train_ids), total=len(train_ids)):
         mask = np.maximum(mask, mask_)
 
 
-    if n < 10:
-        cv2.imwrite("train"+str(n)+"_y.bmp",mask)
+    # cv2.imwrite("train_image/train"+str(n)+"_y.bmp",mask)
 
     mask=normalize_y(mask)
 
@@ -120,6 +119,7 @@ for n, id_ in tqdm(enumerate(test_ids), total=len(test_ids)):
     img = imread(path + '/images/' + id_ + '.png')[:,:,:IMG_CHANNELS]
     sizes_test.append([img.shape[0], img.shape[1]])
 
+    # cv2.imwrite("test_image/test" + str(n) + "_x.bmp", img)
 
     img = resize(img, (IMG_HEIGHT, IMG_WIDTH), mode='constant', preserve_range=True)
 
@@ -344,15 +344,16 @@ model.load_weights('unet_weights.hdf5')
 preds_test = model.predict(X_train,verbose=1)
 preds_test_upsampled = []
 
-for i in range(10):
+for i in range(len(preds_test)):
     tmp = preds_test[i]
+    tmp=resize(tmp,(sizes_test[i][0],sizes_test[i][1]),mode='constant',preserve_range=True)
     tmp=denormalize_y(tmp)
-    cv2.imwrite("test"+str(i)+"_y_pred.bmp",tmp)
+    cv2.imwrite("test_image/test" + str(i) + "_y.bmp", tmp)
 
-# sys.exit()
+
 
 for i in range(len(preds_test)):
-    preds_test_upsampled.append(denormalize_y(resize(np.squeeze(preds_test[i]),
+    preds_test_upsampled.append(denormalize_y(resize(preds_test[i],
                                        (sizes_test[i][0], sizes_test[i][1]), mode='constant', preserve_range=True)))
 
 
