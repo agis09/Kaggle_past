@@ -81,14 +81,14 @@ def masks_as_color(in_mask_list):
             all_masks[:,:] += scale(i) * rle_decode(mask)
     return all_masks
 
-
+"""
 masks = pd.read_csv(os.path.join(ship_dir, 'train_ship_segmentations.csv'))
 # not_empty = pd.notna(masks.EncodedPixels)
 masks['ships'] = masks['EncodedPixels'].map(lambda c_row: 1 if isinstance(c_row, str) else 0)
 unique_img_ids = masks.groupby('ImageId').agg({'ships': 'sum'}).reset_index()
 unique_img_ids['has_ship'] = unique_img_ids['ships'].map(lambda x: 1.0 if x>0 else 0.0)
 
-"""         Undersample Empty Images            """
+         # Undersample Empty Images            
 
 SAMPLES_PER_GROUP = 2000
 balanced_train_df = unique_img_ids.groupby('ships').apply(lambda x: x.sample(SAMPLES_PER_GROUP) \
@@ -99,6 +99,11 @@ train_ids, valid_ids = train_test_split(balanced_train_df,
                                         stratify = balanced_train_df['ships'])
 train_df = pd.merge(masks, train_ids)
 valid_df = pd.merge(masks, valid_ids)
+train_df.to_csv("train_df.csv")
+valid_df.to_csv("valid_df.csv")
+"""
+train_df=pd.read_csv("train_df.csv")
+valid_df=pd.read_csv("valid_df.csv")
 print(train_df.shape[0], 'training masks')
 print(valid_df.shape[0], 'validation masks')
 
@@ -240,7 +245,7 @@ def Unet(GAUSSIAN_NOISE=0.1, UPSAMPLE_MODE='SIMPLE', NET_SCALING = (1, 1), EDGE_
         d = layers.UpSampling2D(NET_SCALING)(d)
 
     seg_model = models.Model(inputs=[input_img], outputs=[d])
-
+    seg_model.summary()
     return seg_model
 
 
@@ -282,11 +287,11 @@ MAX_TRAIN_EPOCHS = 99
 epoch = min(MAX_TRAIN_STEPS, train_df.shape[0]//BATCH_SIZE)
 aug_gen = create_aug_gen(make_image_gen(train_df,BATCH_SIZE))
 loss_history = [model.fit_generator(aug_gen,
-                                    steps_per_epoch=step_count,
+                                    steps_per_epoch=epoch,
                                     epochs=MAX_TRAIN_EPOCHS,
                                     validation_data=(valid_x, valid_y),
                                     callbacks=callbacks_list,
-                                    workers=1 # the generator is not very thread safe
+                                    # workers=1 # the generator is not very thread safe
                                    )]
 
 
