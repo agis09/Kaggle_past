@@ -14,12 +14,14 @@ import keras.backend as K
 from keras.optimizers import Adam
 from keras.losses import binary_crossentropy
 from keras.callbacks import ModelCheckpoint, LearningRateScheduler, EarlyStopping, ReduceLROnPlateau
+from tqdm import tqdm
+
 import gc; gc.enable()
 
 # montage_rgb = lambda x: np.stack([montage(x[:, :, :, i]) for i in range(x.shape[3])], -1)
-ship_dir = 'E:\\kaggle\\AirbusShipDetection'
-train_image_dir = os.path.join(ship_dir, 'train/train')
-test_image_dir = os.path.join(ship_dir, 'test/test')
+ship_dir = 'F:\\Shiga\\kaggle\\AirbusShipDetection'
+train_image_dir = os.path.join(ship_dir, 'train')
+test_image_dir = os.path.join(ship_dir, 'test')
 
 
 def multi_rle_encode(img):
@@ -87,9 +89,7 @@ masks = pd.read_csv(os.path.join(ship_dir, 'train_ship_segmentations.csv'))
 masks['ships'] = masks['EncodedPixels'].map(lambda c_row: 1 if isinstance(c_row, str) else 0)
 unique_img_ids = masks.groupby('ImageId').agg({'ships': 'sum'}).reset_index()
 unique_img_ids['has_ship'] = unique_img_ids['ships'].map(lambda x: 1.0 if x>0 else 0.0)
-
          # Undersample Empty Images            
-
 SAMPLES_PER_GROUP = 2000
 balanced_train_df = unique_img_ids.groupby('ships').apply(lambda x: x.sample(SAMPLES_PER_GROUP) \
                                                                     if len(x) > SAMPLES_PER_GROUP else x)
@@ -274,16 +274,20 @@ early = EarlyStopping(monitor="val_loss", mode="min", verbose=2,
                       patience=20) # probably needs to be more patient, but kaggle time is limited
 
 callbacks_list = [checkpoint, early, reduceLROnPlat]
+"""
+callbacks_list = [checkpoint, reduceLROnPlat]
+"""
+VALID_IMG = 600
+valid_x, valid_y = next(make_image_gen(valid_df,batch_size=VALID_IMG))
 
-
-valid_x, valid_y = next(make_image_gen(valid_df,batch_size=600))
-
-BATCH_SIZE = 32
+BATCH_SIZE = 16
 
 # maximum number of steps_per_epoch in training
 MAX_TRAIN_STEPS = 7
 MAX_TRAIN_EPOCHS = 99
 
+
+"""
 epoch = min(MAX_TRAIN_STEPS, train_df.shape[0]//BATCH_SIZE)
 aug_gen = create_aug_gen(make_image_gen(train_df,BATCH_SIZE))
 loss_history = [model.fit_generator(aug_gen,
@@ -319,7 +323,50 @@ def save_loss(loss_history):
 
 
 save_loss(loss_history)
-
+"""
 model.load_weights(weight_path)
 model.save('model.h5')
 
+"""         Submission          """
+
+
+def predict(img, path=test_image_dir):
+    c_img = imread(os.path.join(path, c_img_name))
+    c_img = np.expand_dims(c_img, 0)/255.0
+    cur_seg = model.predict(c_img)[0]
+    cur_seg = binary_opening(cur_seg>0.99, np.expand_dims(disk(2), -1))
+    return cur_seg, c_img
+
+
+test_paths = np.array(os.listdir(test_image_dir))
+## Find a threshold to select single ships
+ship1_x, ship1_y = next(make_image_gen(valid_df[valid_df['ships'] == 1], VALID_IMG))
+max_threshold  = np.mean(ship1_y)
+print('Max mean threshold:', max_threshold) ## HACK: ignore imgs with too many trues/boats to avoid submitting masks that should have been split
+
+
+def pred_encode(img, **kwargs):
+    cur_seg, _ = predict(img)
+    cur_rles = rle_encode(cur_seg, **kwargs)
+    return [img, cur_rles if len(cur_rles) > 0 else None]
+
+
+out_pred_rows = []
+
+
+for c_img_name in tqdm(test_paths): ## only a subset as it takes too long to run
+    out_pred_rows += [pred_encode(c_img_name, min_threshold=1.0, max_threshold=max_threshold)]
+
+print(out_pred_rows)
+sub = pd.DataFrame(out_pred_rows)
+sub.columns = ['ImageId', 'EncodedPixels']
+sub = sub[sub.EncodedPixels.notnull()]
+
+sub1 = pd.read_csv('./sample_submission.csv')
+sub1 = pd.DataFrame(np.setdiff1d(sub1['ImageId'].unique(), sub['ImageId'].unique(), assume_unique=True), columns=['ImageId'])
+sub1['EncodedPixels'] = None
+
+sub = pd.concat([sub, sub1])
+print(sub.head)
+sub.to_csv('submission.csv', index=False)
+sub.head()
