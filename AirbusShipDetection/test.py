@@ -83,7 +83,7 @@ def masks_as_color(in_mask_list):
             all_masks[:,:] += scale(i) * rle_decode(mask)
     return all_masks
 
-"""
+
 masks = pd.read_csv(os.path.join(ship_dir, 'train_ship_segmentations.csv'))
 # not_empty = pd.notna(masks.EncodedPixels)
 masks['ships'] = masks['EncodedPixels'].map(lambda c_row: 1 if isinstance(c_row, str) else 0)
@@ -101,7 +101,7 @@ train_df = pd.merge(masks, train_ids)
 valid_df = pd.merge(masks, valid_ids)
 train_df.to_csv("train_df.csv")
 valid_df.to_csv("valid_df.csv")
-"""
+
 train_df=pd.read_csv("train_df.csv")
 valid_df=pd.read_csv("valid_df.csv")
 print(train_df.shape[0], 'training masks')
@@ -287,7 +287,7 @@ MAX_TRAIN_STEPS = 7
 MAX_TRAIN_EPOCHS = 99
 
 
-"""
+
 epoch = min(MAX_TRAIN_STEPS, train_df.shape[0]//BATCH_SIZE)
 aug_gen = create_aug_gen(make_image_gen(train_df,BATCH_SIZE))
 loss_history = [model.fit_generator(aug_gen,
@@ -297,8 +297,6 @@ loss_history = [model.fit_generator(aug_gen,
                                     callbacks=callbacks_list,
                                     # workers=1 # the generator is not very thread safe
                                    )]
-
-
 def save_loss(loss_history):
     epich = np.cumsum(np.concatenate(
         [np.linspace(0.5, 1, len(mh.epoch)) for mh in loss_history]))
@@ -310,7 +308,6 @@ def save_loss(loss_history):
             [mh.history['val_loss'] for mh in loss_history]), 'r-')
     ax1.legend(['Training', 'Validation'])
     ax1.set_title('Loss')
-
     _ = ax2.plot(epich, np.concatenate(
         [mh.history['binary_accuracy'] for mh in loss_history]), 'b-',
                  epich, np.concatenate(
@@ -318,12 +315,9 @@ def save_loss(loss_history):
                  'r-')
     ax2.legend(['Training', 'Validation'])
     ax2.set_title('Binary Accuracy (%)')
-
     fig.savefig('result.png')
-
-
 save_loss(loss_history)
-"""
+
 model.load_weights(weight_path)
 model.save('model.h5')
 
