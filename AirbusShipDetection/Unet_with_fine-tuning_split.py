@@ -15,7 +15,7 @@ from resnet50_fixed import ResNet50
 # from param import args
 
 import Unet_with_fine_tuning_models
-
+import losses
 import os
 import numpy as np # linear algebra
 import pandas as pd # data processing, CSV file I/O (e.g. pd.read_csv)
@@ -41,132 +41,38 @@ import gc; gc.enable()
 # montage_rgb = lambda x: np.stack([montage(x[:, :, :, i]) for i in range(x.shape[3])], -1)
 ship_dir = 'F:\\Shiga\\kaggle\\AirbusShipDetection'
 train_image_dir = os.path.join(ship_dir, 'train_split')
-
+train_mask_image_dir = os.path.join(ship_dir, 'train_mask_split')
 input_shape = (256,256,3)
-rescale_bias = input_shape[0]/768
 
 
-def multi_rle_encode(img):
-    labels = label(img)
-    if img.ndim > 2:
-        return [rle_encode(np.sum(labels==k, axis=2)) for k in np.unique(labels[labels>0])]
-    else:
-        return [rle_encode(labels==k) for k in np.unique(labels[labels>0])]
-# ref: https://www.kaggle.com/paulorzp/run-length-encode-and-decode
+train_df = pd.read_csv("classification_labels.csv")
+train_df = train_df[train_df['has_ship']==1]
+
+train_df, valid_df = train_test_split(train_df,test_size = 0.2)
 
 
-def rle_encode(img, min_threshold=1e-3, max_threshold=None):
-    '''
-    img: numpy array, 1 - mask, 0 - background
-    Returns run length as string formated
-    '''
-    if np.max(img) < min_threshold:
-        return '' ## no need to encode if it's all zeros
-    if max_threshold and np.mean(img) > max_threshold:
-        return '' ## ignore overfilled mask
-    pixels = img.T.flatten()
-    pixels = np.concatenate([[0], pixels, [0]])
-    runs = np.where(pixels[1:] != pixels[:-1])[0] + 1
-    runs[1::2] -= runs[::2]
-    return ' '.join(str(x) for x in runs)
-
-
-def rle_decode(mask_rle, shape=(768, 768)):
-    '''
-    mask_rle: run-length as string formated (start length)
-    shape: (height,width) of array to return
-    Returns numpy array, 1 - mask, 0 - background
-    '''
-    s = mask_rle.split()
-    starts, lengths = [np.asarray(x, dtype=int) for x in (s[0:][::2], s[1:][::2])]
-    starts -= 1
-    ends = starts + lengths
-    img = np.zeros(shape[0]*shape[1], dtype=np.uint8)
-    for lo, hi in zip(starts, ends):
-        img[lo:hi] = 1
-    return img.reshape(shape).T  # Needed to align to RLE direction
-
-
-def masks_as_image(in_mask_list):
-    # Take the individual ship masks and create a single mask array for all ships
-    all_masks = np.zeros((768, 768), dtype = np.uint8)
-    for mask in in_mask_list:
-        if isinstance(mask, str):
-            all_masks |= rle_decode(mask)
-    return all_masks
-
-
-def masks_as_color(in_mask_list):
-    # Take the individual ship masks and create a color mask array for each ships
-    all_masks = np.zeros((768, 768), dtype = np.float)
-    scale = lambda x: (len(in_mask_list)+x+1) / (len(in_mask_list)*2) ## scale the heatmap image to shift
-    for i,mask in enumerate(in_mask_list):
-        if isinstance(mask, str):
-            all_masks[:,:] += scale(i) * rle_decode(mask)
-    return all_masks
-
-
-masks = pd.read_csv(os.path.join(ship_dir, 'train_ship_segmentations.csv'))
-# not_empty = pd.notna(masks.EncodedPixels)
-masks['ships'] = masks['EncodedPixels'].map(lambda c_row: 1 if isinstance(c_row, str) else 0)
-unique_img_ids = masks.groupby('ImageId').agg({'ships': 'sum'}).reset_index()
-unique_img_ids['has_ship'] = unique_img_ids['ships'].map(lambda x: 1.0 if x>0 else 0.0)
-"""
-         # Undersample Empty Images            
-SAMPLES_PER_GROUP = 2000
-balanced_train_df = unique_img_ids.groupby('ships').apply(lambda x: x.sample(SAMPLES_PER_GROUP) \
-                                                                    if len(x) > SAMPLES_PER_GROUP else x)
-print(balanced_train_df.shape[0], 'masks')
-train_ids, valid_ids = train_test_split(balanced_train_df,
-                                        test_size = 0.2,
-                                        stratify = balanced_train_df['ships'])
-"""
-
-train_df = unique_img_ids[unique_img_ids['has_ship']>0]
-# print(train_df.head)
-                 # Use only "has_ship"
-train_ids, valid_ids = train_test_split(train_df,test_size = 0.2)
-
-
-train_df = pd.merge(masks, train_ids)
-valid_df = pd.merge(masks, valid_ids)
-train_df.to_csv("train_df.csv")
-valid_df.to_csv("valid_df.csv")
-
-train_df=pd.read_csv("train_df.csv")
-valid_df=pd.read_csv("valid_df.csv")
-print(train_df.shape[0], 'training masks')
-print(valid_df.shape[0], 'validation masks')
-
-# print(train_df)
 
 """         Decode RLEs into Images         """
 
 
 def make_image_gen(in_df, batch_size):
-    all_batches = list(in_df.groupby('ImageId'))
+    all_batches = list(in_df.groupby('ids'))
     out_rgb = []
     out_mask = []
     while True:
         np.random.shuffle(all_batches)
         for c_img_id, c_masks in all_batches:
+            c_mask_img_id = c_img_id[:-6]+'_mask'+c_img_id[-6:]
             rgb_path = os.path.join(train_image_dir, c_img_id)
+            mask_path = os.path.join(train_mask_image_dir,c_mask_img_id)
             c_img = imread(rgb_path)
-            c_mask = np.expand_dims(masks_as_image(c_masks['EncodedPixels'].values), -1)
-            c_img = rescale(c_img, rescale_bias, anti_aliasing=True)
-            c_mask = rescale(c_mask, rescale_bias, anti_aliasing=True)
+            c_mask = imread(mask_path)
+            c_mask = np.reshape(c_mask,(c_mask.shape[0],c_mask.shape[1],1))
             out_rgb += [c_img]
             out_mask += [c_mask]
             if len(out_rgb)>=batch_size:
-                yield np.stack(out_rgb, 0)/255.0, np.stack(out_mask, 0)
+                yield np.stack(out_rgb, 0)/255.0, np.stack(out_mask, 0)/255.0
                 out_rgb, out_mask=[], []
-
-
-
-# train_gen = make_image_gen(train_df, batch_size=48)
-# train_x, train_y = next(train_gen)
-# print(train_y.shape)
-
 
 """         Augmentation            """
 
@@ -223,7 +129,7 @@ def Unet(GAUSSIAN_NOISE=0.1, UPSAMPLE_MODE='SIMPLE', NET_SCALING = (1, 1), EDGE_
     else:
         upsample = upsample_simple
 
-    input_img = layers.Input((768,768,3), name='RGB_Input')
+    input_img = layers.Input(input_shape, name='RGB_Input')
     pp_in_layer = input_img
 
     if NET_SCALING is not None:
@@ -282,7 +188,6 @@ def Unet(GAUSSIAN_NOISE=0.1, UPSAMPLE_MODE='SIMPLE', NET_SCALING = (1, 1), EDGE_
     return seg_model
 
 
-## IoU of boats
 def IoU(y_true, y_pred, eps=1e-6):
     if np.max(y_true) == 0.0:
         return IoU(1-y_true, 1-y_pred) ## empty image; calc IoU of zeros
@@ -291,12 +196,24 @@ def IoU(y_true, y_pred, eps=1e-6):
     return -K.mean( (intersection + eps) / (union + eps), axis=0)
 
 
+def dice_coef(y_true, y_pred):
+    y_true = K.flatten(y_true)
+    y_pred = K.flatten(y_pred)
+    intersection = K.sum(y_true * y_pred)
+    return 2.0 * intersection / (K.sum(y_true) + K.sum(y_pred) + 1)
+
+
+def dice_coef_loss(y_true, y_pred):
+    return 1.0 - dice_coef(y_true, y_pred)
+
+
 make_model = Unet_with_fine_tuning_models
-model_name = 'resnet50'     # resnet50, inception_resnet_v2, mobilenet, vgg, simple_unet
+model_name = 'vgg'     # resnet50, inception_resnet_v2, mobilenet, vgg, simple_unet
 model = make_model.chose_model(input_shape,model_name)
 
-
-model.compile(optimizer=Adam(1e-3, decay=1e-6), loss=IoU, metrics=['binary_accuracy'])
+make_loss = losses
+loss_name = 'dice_coef_loss'    # IoU, dice_coef_loss, tversky_loss
+model.compile(optimizer=Adam(1e-3, decay=1e-6), loss=make_loss.chose_losses(loss_name), metrics=['binary_accuracy'])
 
 weight_path="{}_weights.best.hdf5".format('seg_model')
 
@@ -314,10 +231,11 @@ callbacks_list = [checkpoint, early, reduceLROnPlat]
 """
 callbacks_list = [checkpoint, reduceLROnPlat]
 """
-VALID_IMG = 900
-valid_x, valid_y = next(make_image_gen(valid_df,batch_size=VALID_IMG))
 
-BATCH_SIZE = 7  # resnet50:7    inception_resnet_v2:1   vgg:
+
+valid_x, valid_y = next(make_image_gen(valid_df,batch_size=len(valid_df)))
+
+BATCH_SIZE = 16  # resnet50:16    inception_resnet_v2:1   vgg:
 
 # maximum number of steps_per_epoch in training
 MAX_TRAIN_STEPS = 7

@@ -16,6 +16,19 @@ from glob import glob
 from tqdm import tqdm
 from keras.models import load_model
 from PIL import Image
+import keras.backend as K
+from skimage.segmentation import mark_boundaries
+# from skimage.util.montage import montage2d as montage
+from skimage.morphology import binary_opening, disk
+from sklearn.model_selection import train_test_split
+from skimage.morphology import label
+from keras.preprocessing.image import ImageDataGenerator
+from keras import models, layers
+import keras.backend as K
+from keras.optimizers import Adam
+from keras.losses import binary_crossentropy
+from keras.callbacks import ModelCheckpoint, LearningRateScheduler, EarlyStopping, ReduceLROnPlateau
+from tqdm import tqdm
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
@@ -25,7 +38,7 @@ UPSAMPLE_MODE = 'SIMPLE'
 VALID_IMG_COUNT = 1000
 # maximum number of training images
 MAX_TRAIN_IMAGES = 1000000
-BASE_MODEL='VGG16'    # ['VGG16', 'RESNET52', 'InceptionV3', 'Xception', 'DenseNet169', 'DenseNet121']
+# BASE_MODEL='VGG16'    # ['VGG16', 'RESNET52', 'InceptionV3', 'Xception', 'DenseNet169', 'DenseNet121']
 IMG_SIZE = (768, 768)   # [(224, 224), (384, 384), (512, 512), (640, 640)]
 BATCH_SIZE = 12     # [1, 8, 16, 24]
 DROPOUT = 0.5
@@ -37,41 +50,6 @@ RGB_FLIP = 1    # should rgb be flipped when rendering images
 ship_dir = './'
 # train_image_dir = os.path.join(ship_dir, 'train')
 test_image_dir = os.path.join(ship_dir, 'test_test')
-"""
-if BASE_MODEL == 'VGG16':
-    from keras.applications.vgg16 import VGG16 as PTModel, preprocess_input
-elif BASE_MODEL == 'RESNET52':
-    from keras.applications.resnet50 import ResNet50 as PTModel, preprocess_input
-elif BASE_MODEL == 'InceptionV3':
-    from keras.applications.inception_v3 import InceptionV3 as PTModel, preprocess_input
-elif BASE_MODEL == 'Xception':
-    from keras.applications.xception import Xception as PTModel, preprocess_input
-elif BASE_MODEL == 'DenseNet169':
-    from keras.applications.densenet import DenseNet169 as PTModel, preprocess_input
-elif BASE_MODEL == 'DenseNet121':
-    from keras.applications.densenet import DenseNet121 as PTModel, preprocess_input
-else:
-    raise ValueError('Unknown model: {}'.format(BASE_MODEL))
-
-"""
-"""
-
-
-base_pretrained_model = PTModel(input_shape=(IMG_SIZE[0],IMG_SIZE[1],3), include_top=False, weights='imagenet')
-base_pretrained_model.trainable = False
-
-img_in = layers.Input((IMG_SIZE[0],IMG_SIZE[1],3), name='Image_RGB_In')
-img_noise = layers.GaussianNoise(GAUSSIAN_NOISE)(img_in)
-pt_features = base_pretrained_model(img_noise)
-pt_depth = base_pretrained_model.get_output_shape_at(0)[-1]
-bn_features = layers.BatchNormalization()(pt_features)
-feature_dropout = layers.SpatialDropout2D(DROPOUT)(bn_features)
-gmp_dr = layers.GlobalMaxPooling2D()(feature_dropout)
-dr_steps = layers.Dropout(DROPOUT)(layers.Dense(DENSE_COUNT, activation='relu')(gmp_dr))
-out_layer = layers.Dense(1, activation='sigmoid')(dr_steps)
-
-ship_model = models.Model(inputs=[img_in], outputs=[out_layer], name='full_model')
-"""
 ship_model = load_model('full_ship_model_VGG16.h5')
 
 ship_model.compile(optimizer=Adam(lr=LEARN_RATE),
@@ -79,8 +57,6 @@ ship_model.compile(optimizer=Adam(lr=LEARN_RATE),
                    metrics=['accuracy'])
 
 ship_model.summary()
-
-ship_model.load_weights('boat_detector_weights.best.hdf5')
 
 test_datagen = ImageDataGenerator(rescale=1./255)
 
@@ -109,9 +85,7 @@ for i,path in enumerate(image_list):
 
 
 
-
 """             segmentation            """
-
 
 def IoU(y_true, y_pred, eps=1e-6):
     if np.max(y_true) == 0.0:
@@ -121,10 +95,9 @@ def IoU(y_true, y_pred, eps=1e-6):
     return -K.mean( (intersection + eps) / (union + eps), axis=0)
 
 
-seg_model = load_model("model_hasship.h5",custom_objects={'IoU':IoU})
+seg_model = load_model("model_unet_with_resnet50.h5",custom_objects={'IoU':IoU})
 # seg_model.summary()
 seg_model.compile(optimizer=Adam(1e-3, decay=1e-6), loss=IoU, metrics=['binary_accuracy'])
-
 
 test_image_dir = os.path.join(ship_dir, 'test_test_has_ship./test_has_ship')
 test_paths = np.array(os.listdir(test_image_dir))
@@ -162,7 +135,6 @@ def pred_encode(img, **kwargs):
     return [img, cur_rles if len(cur_rles) > 0 else None]
 
 
-
 out_pred_rows = []
 
 
@@ -180,5 +152,4 @@ sub1['EncodedPixels'] = None
 
 sub = pd.concat([sub, sub1])
 print(sub.head)
-sub.to_csv('submission.csv', index=False)
-sub.head()
+sub.to_csv('submission_unet_cnn.csv', index=False)
