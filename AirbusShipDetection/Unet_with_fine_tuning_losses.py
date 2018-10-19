@@ -1,20 +1,3 @@
-
-from keras.applications.vgg16 import VGG16
-from keras.engine.topology import Input
-from keras.engine.training import Model
-from keras.layers.convolutional import Conv2D, UpSampling2D, Conv2DTranspose
-from keras.layers.core import Activation, SpatialDropout2D
-from keras.layers.merge import concatenate
-from keras.layers.normalization import BatchNormalization
-from keras.layers.pooling import MaxPooling2D
-
-from inception_resnet_v2 import InceptionResNetV2
-from mobile_net_fixed import MobileNet
-from resnet50_fixed import ResNet50
-# from param import args
-
-import Unet_with_fine_tuning_models
-
 import os
 import numpy as np # linear algebra
 import pandas as pd # data processing, CSV file I/O (e.g. pd.read_csv)
@@ -58,11 +41,11 @@ def dice_coef_loss(y_true, y_pred):
     return 1.0 - dice_coef(y_true, y_pred)
 
 
-ALPHA = 0.7 # 0～1.0の値、Precision重視ならALPHAを大きくする
-BETA = 1.0 - ALPHA # 0～1.0の値、Recall重視ならALPHAを小さくする
 
 
 def tversky_index(y_true, y_pred):
+    ALPHA = 0.7  # 0～1.0の値、Precision重視ならALPHAを大きくする
+    BETA = 1.0 - ALPHA  # 0～1.0の値、Recall重視ならALPHAを小さくする
     y_true = K.flatten(y_true)
     y_pred = K.flatten(y_pred)
     intersection = K.sum(y_true * y_pred)
@@ -74,15 +57,5 @@ def tversky_index(y_true, y_pred):
 def tversky_loss(y_true, y_pred):
     return 1.0 - tversky_index(y_true, y_pred)
 
-
-def chose_loss_function(y_true,y_pred, loss_function):
-    if loss_function == 'IoU':
-        return IoU(y_true, y_pred)
-    if loss_function == 'dice_coef_loss':
-        return dice_coef_loss(y_true, y_pred)
-    if loss_function == 'tversky_loss':
-        return tversky_loss(y_true, y_pred)
-    else:
-        raise ValueError("Unknown loss function")
 
 
