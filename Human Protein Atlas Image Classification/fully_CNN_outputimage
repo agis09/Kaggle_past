@@ -87,7 +87,7 @@ def getTrainDataset(train,full):
         # img_g = cv2.adaptiveThreshold(img_g,1.,cv2.ADAPTIVE_THRESH_GAUSSIAN_C,cv2.THRESH_BINARY,11,2)
         img_g=cv2.dilate(img_g,(2,2),iterations=1)
 
-        cv2.imwrite("./image_sample/" + name + "_mask.png", img_g*255.)
+        # cv2.imwrite("./image_sample/" + name + "_mask.png", img_g*255.)
         img_g=cv2.resize(img_g,(32,32))
 
         # img_g=np.reshape(img_g,(32,32,1))
@@ -415,7 +415,7 @@ def weighted_binary_crossentropy(target, output):
                                                     pos_weight=POS_WEIGHT)
     return tf.reduce_mean(loss, axis=-1)
 
-lr_list=[1e-3,1e-4,1e-5]
+lr_list=[1e-4,1e-5]
 
 for lr in lr_list:
 
@@ -457,8 +457,8 @@ for lr in lr_list:
     # print(paths.shape, labels.shape)
     print(pathsTrain.shape, labelsTrain.shape, pathsVal.shape, labelsVal.shape)
 
-    tg = ProteinDataGenerator(pathsTrain, labelsTrain, BATCH_SIZE, SHAPE, use_cache=False, augment=False, shuffle=False)
-    vg = ProteinDataGenerator(pathsVal, labelsVal, BATCH_SIZE, SHAPE, use_cache=False, shuffle=False)
+    tg = ProteinDataGenerator(pathsTrain, labelsTrain, BATCH_SIZE, SHAPE, use_cache=True, augment=True, shuffle=True)
+    vg = ProteinDataGenerator(pathsVal, labelsVal, BATCH_SIZE, SHAPE, use_cache=True, shuffle=False)
 
     # https://keras.io/callbacks/#modelcheckpoint
     checkpoint = ModelCheckpoint('./next_base.model%f'%lr, monitor='val_loss', verbose=1, save_best_only=True,
@@ -488,8 +488,8 @@ for lr in lr_list:
     epochs = 50
     lr_sched = step_decay_schedule(initial_lr=1e-3, step_size=epochs, min_lr=1e-4)
 
-    use_multiprocessing = True  # DO NOT COMBINE MULTIPROCESSING WITH CACHE!
-    workers = 32  # DO NOT COMBINE MULTIPROCESSING WITH CACHE!
+    use_multiprocessing = False  # DO NOT COMBINE MULTIPROCESSING WITH CACHE!
+    workers = 1  # DO NOT COMBINE MULTIPROCESSING WITH CACHE!
 
     hist = model.fit_generator(
         tg,
@@ -500,7 +500,7 @@ for lr in lr_list:
         use_multiprocessing=use_multiprocessing,
         workers=workers,
         verbose=1,
-        max_queue_size=64,
+        # max_queue_size=64,
         callbacks=[checkpoint])
     # callbacks=[checkpoint,lr_sched])
 
@@ -513,7 +513,7 @@ for lr in lr_list:
     ax[1].plot(hist.epoch, hist.history["val_f1"], label="Validation F1")
     ax[0].legend()
     ax[1].legend()
-    plt.savefig('next_base_model_Adam%f.png'%lr)
+    plt.savefig('fcnn_model_Adam%f.png'%lr)
 
 
 
